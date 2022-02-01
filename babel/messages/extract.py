@@ -815,6 +815,7 @@ def extract_django(fileobj, keywords, comment_tags, options):
                     plural.append("%%(%s)s" % t.contents)
                 else:
                     singular.append("%%(%s)s" % t.contents)
+                flags.add('python-format')
             elif t.token_type == TokenType.TEXT:
                 contents = t.contents.replace("%", "%%")
                 if inplural:

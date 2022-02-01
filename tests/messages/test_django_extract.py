@@ -15,11 +15,11 @@ def test_django_translate():
 def test_django_translate():
     """Django doesn't support variables in {% translate %}"""
     buf = BytesIO(br"""
-{% translate "foo {bar}" %}
+{% translate "foo {{bar}}" %}
 """)
     messages = list(extract.extract('django', buf,
                                     extract.DEFAULT_KEYWORDS, [], {}))
-    assert messages[0][1] == u'foo {bar}'
+    assert messages[0][1] == u'foo {{bar}}'
     assert messages[0][4] == set()
 
 def test_django_blocktranslate():
@@ -36,7 +36,7 @@ foo
 def test_django_blocktranslate_format():
     buf = BytesIO(br"""
 {% blocktranslate trimmed %}
-foo {bar}
+foo {{bar}}
 {% endblocktranslate %}
 """)
     messages = list(extract.extract('django', buf,
