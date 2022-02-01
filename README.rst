@@ -3,6 +3,7 @@
 * Fix duplicate locations when not writing line numbers to .po files
 * Move detection of python-format to the python extractor
 * Add support for detecting python-brace-format
+* Add an extractor for Django templates with support for comments
 
 About Babel
 ===========
