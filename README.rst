@@ -1,3 +1,9 @@
+**NOTE:** This fork of https://github.com/python-babel/babel contains these changes:
+
+* Fix duplicate locations when not writing line numbers to .po files
+* Move detection of python-format to the python extractor
+* Add support for detecting python-brace-format
+
 About Babel
 ===========
 
