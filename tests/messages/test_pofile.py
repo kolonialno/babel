@@ -531,8 +531,8 @@ not be removed
                         width=42)
         self.assertEqual(b'''msgid ""
 "Here's some text where\\n"
-"white space and line breaks matter, and"
-" should\\n"
+"white space and line breaks matter, and "
+"should\\n"
 "\\n"
 "not be removed\\n"
 "\\n"
@@ -595,10 +595,10 @@ msgstr ""''', buf.getvalue().strip())
         pofile.write_po(buf, catalog, width=None, omit_header=True)
         self.assertEqual(b"""\
 #: fake.py:1 fake.py:2 fake.py:3 fake.py:4 fake.py:5 fake.py:6 fake.py:7
-#: fake.py:8 fake.py:9 fake.py:10 fake.py:11 fake.py:12 fake.py:13 fake.py:14
-#: fake.py:15 fake.py:16 fake.py:17 fake.py:18 fake.py:19 fake.py:20 fake.py:21
-#: fake.py:22 fake.py:23 fake.py:24 fake.py:25 fake.py:26 fake.py:27 fake.py:28
-#: fake.py:29
+#: fake.py:8 fake.py:9 fake.py:10 fake.py:11 fake.py:12 fake.py:13
+#: fake.py:14 fake.py:15 fake.py:16 fake.py:17 fake.py:18 fake.py:19
+#: fake.py:20 fake.py:21 fake.py:22 fake.py:23 fake.py:24 fake.py:25
+#: fake.py:26 fake.py:27 fake.py:28 fake.py:29
 msgid "pretty dam long message id, which must really be big to test this wrap behaviour, if not it won't work."
 msgstr ""
 
@@ -606,13 +606,13 @@ msgstr ""
         buf = BytesIO()
         pofile.write_po(buf, catalog, width=100, omit_header=True)
         self.assertEqual(b"""\
-#: fake.py:1 fake.py:2 fake.py:3 fake.py:4 fake.py:5 fake.py:6 fake.py:7 fake.py:8 fake.py:9 fake.py:10
-#: fake.py:11 fake.py:12 fake.py:13 fake.py:14 fake.py:15 fake.py:16 fake.py:17 fake.py:18 fake.py:19
-#: fake.py:20 fake.py:21 fake.py:22 fake.py:23 fake.py:24 fake.py:25 fake.py:26 fake.py:27 fake.py:28
-#: fake.py:29
+#: fake.py:1 fake.py:2 fake.py:3 fake.py:4 fake.py:5 fake.py:6 fake.py:7 fake.py:8 fake.py:9
+#: fake.py:10 fake.py:11 fake.py:12 fake.py:13 fake.py:14 fake.py:15 fake.py:16 fake.py:17
+#: fake.py:18 fake.py:19 fake.py:20 fake.py:21 fake.py:22 fake.py:23 fake.py:24 fake.py:25
+#: fake.py:26 fake.py:27 fake.py:28 fake.py:29
 msgid ""
-"pretty dam long message id, which must really be big to test this wrap behaviour, if not it won't"
-" work."
+"pretty dam long message id, which must really be big to test this wrap behaviour, if not it won't "
+"work."
 msgstr ""
 
 """, buf.getvalue().lower())

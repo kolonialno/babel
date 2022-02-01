@@ -4,6 +4,7 @@
 * Move detection of python-format to the python extractor
 * Add support for detecting python-brace-format
 * Add an extractor for Django templates with support for comments
+* Rewritten wrapping algorithm that's closer to gettext's
 
 About Babel
 ===========

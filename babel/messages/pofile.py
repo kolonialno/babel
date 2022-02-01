@@ -13,6 +13,7 @@
 from __future__ import print_function
 import os
 import re
+from textwrap import wrap
 
 from babel.messages.catalog import Catalog, Message
 from babel.util import wraptext, _cmp
@@ -405,66 +406,42 @@ def escape(string):
                           .replace('\n', '\\n') \
                           .replace('\"', '\\"')
 
+def wrap_lines(value, width):
 
-def normalize(string, prefix='', width=76):
-    r"""Convert a string into a format that is appropriate for .po files.
+    if width <= 0:
+        return [value]
 
-    >>> print(normalize('''Say:
-    ...   "hello, world!"
-    ... ''', width=None))
-    ""
-    "Say:\n"
-    "  \"hello, world!\"\n"
+    break_on = {' ', '.', '=', '>', '-', ':'}
 
-    >>> print(normalize('''Say:
-    ...   "Lorem ipsum dolor sit amet, consectetur adipisicing elit, "
-    ... ''', width=32))
-    ""
-    "Say:\n"
-    "  \"Lorem ipsum dolor sit "
-    "amet, consectetur adipisicing"
-    " elit, \"\n"
+    def next_line():
+        chunk = value[0:width]
 
-    :param string: the string to normalize
-    :param prefix: a string that should be prepended to every line
-    :param width: the maximum line width; use `None`, 0, or a negative number
-                  to completely disable line wrapping
-    """
-    if width and width > 0:
-        prefixlen = len(prefix)
-        lines = []
-        for line in string.splitlines(True):
-            if len(escape(line)) + prefixlen > width:
-                chunks = WORD_SEP.split(line)
-                chunks.reverse()
-                while chunks:
-                    buf = []
-                    size = 2
-                    while chunks:
-                        l = len(escape(chunks[-1])) - 2 + prefixlen
-                        if size + l < width:
-                            buf.append(chunks.pop())
-                            size += l
-                        else:
-                            if not buf:
-                                # handle long chunks by putting them on a
-                                # separate line
-                                buf.append(chunks.pop())
-                            break
-                    lines.append(u''.join(buf))
-            else:
-                lines.append(line)
-    else:
-        lines = string.splitlines(True)
+        if len(value) <= width:
+            return value
 
-    if len(lines) <= 1:
-        return escape(string)
+        i = len(chunk)
+        while i > 0:
+            if chunk[i-1:i] in break_on:
+                return chunk[0:i]
+            i -= 1
 
-    # Remove empty trailing line
-    if lines and not lines[-1]:
-        del lines[-1]
-        lines[-1] += '\n'
-    return u'""\n' + u'\n'.join([(prefix + escape(line)) for line in lines])
+        # Nothing to break on within the width limit, so find next possibility
+        i = width
+        while i < len(value):
+            if value[i:i+1] in break_on:
+                return value[0:i]
+            i += 1
+
+        # No characters to break on found, return rest of value
+        return value
+
+    lines = []
+    while value:
+        line = next_line()
+        lines.append(line)
+        value = value[len(line):]
+
+    return lines
 
 
 def write_po(fileobj, catalog, width=76, no_location=False, omit_header=False,
@@ -513,8 +490,6 @@ def write_po(fileobj, catalog, width=76, no_location=False, omit_header=False,
                              updating the catalog
     :param include_lineno: include line number in the location comment
     """
-    def _normalize(key, prefix=''):
-        return normalize(key, prefix=prefix, width=width)
 
     def _write(text):
         if isinstance(text, str):
@@ -528,35 +503,51 @@ def write_po(fileobj, catalog, width=76, no_location=False, omit_header=False,
             _width = width
         else:
             _width = 76
-        for line in wraptext(comment, _width):
+        for line in wraptext(comment, _width - len(prefix) - 2):
             _write('#%s %s\n' % (prefix, line.strip()))
 
+
+    def _write_field(field, value, prefix=''):
+        # Write a field to the file, e.g. msgid
+
+        first_line_prefix = u'%s%s ' % (prefix, field)
+        escaped_value = escape(value)[1:-1] if value else ''
+        _width = width if width and width > 0 else 0
+
+        # Split on \\n and keep the \\n bit in the strings
+        lines = '\\n\n'.join(escaped_value.split('\\n')).splitlines()
+
+        if (
+            # More than one line
+            len(lines) > 1
+            # Or a single line that does not fit together with the prefix
+            or (_width > 0 and len(first_line_prefix) + len(escaped_value) + 2 > _width)
+        ):
+            _write('%s%s ""\n' % (prefix, field))
+
+            for line in lines:
+                for _line in wrap_lines(line, _width - len(prefix) - 2):
+                    _write('%s"%s"\n' % (prefix, _line))
+        else:
+            _write('%s%s "%s"\n' % (prefix, field, escaped_value))
+
     def _write_message(message, prefix=''):
+        if message.context:
+            _write_field('msgctxt', message.context, prefix)
+
         if isinstance(message.id, (list, tuple)):
-            if message.context:
-                _write('%smsgctxt %s\n' % (prefix,
-                                           _normalize(message.context, prefix)))
-            _write('%smsgid %s\n' % (prefix, _normalize(message.id[0], prefix)))
-            _write('%smsgid_plural %s\n' % (
-                prefix, _normalize(message.id[1], prefix)
-            ))
+            _write_field('msgid', message.id[0], prefix)
+            _write_field('msgid_plural', message.id[1], prefix)
 
             for idx in range(catalog.num_plurals):
                 try:
                     string = message.string[idx]
                 except IndexError:
                     string = ''
-                _write('%smsgstr[%d] %s\n' % (
-                    prefix, idx, _normalize(string, prefix)
-                ))
+                _write_field('msgstr[%d]' % idx, string, prefix)
         else:
-            if message.context:
-                _write('%smsgctxt %s\n' % (prefix,
-                                           _normalize(message.context, prefix)))
-            _write('%smsgid %s\n' % (prefix, _normalize(message.id, prefix)))
-            _write('%smsgstr %s\n' % (
-                prefix, _normalize(message.string or '', prefix)
-            ))
+            _write_field('msgid', message.id, prefix)
+            _write_field('msgstr', message.string, prefix)
 
     sort_by = None
     if sort_output:
@@ -607,12 +598,9 @@ def write_po(fileobj, catalog, width=76, no_location=False, omit_header=False,
             _write('#%s\n' % ', '.join([''] + sorted(message.flags)))
 
         if message.previous_id and include_previous:
-            _write_comment('msgid %s' % _normalize(message.previous_id[0]),
-                           prefix='|')
+            _write_field('msgid', message.previous_id[0], '#| ')
             if len(message.previous_id) > 1:
-                _write_comment('msgid_plural %s' % _normalize(
-                    message.previous_id[1]
-                ), prefix='|')
+                _write_field('msgid_plural', message.previous_id[1], '#| ')
 
         _write_message(message)
         _write('\n')
