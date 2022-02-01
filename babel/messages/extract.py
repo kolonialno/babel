@@ -332,7 +332,8 @@ def extract(method, fileobj, keywords=DEFAULT_KEYWORDS, comment_tags=(),
             builtin = {
                 'ignore': extract_nothing,
                 'python': extract_python,
-                'javascript': extract_javascript
+                'javascript': extract_javascript,
+                'django': extract_django,
             }
             func = builtin.get(method)
 
@@ -667,3 +668,264 @@ def extract_javascript(fileobj, keywords, comment_tags, options):
             funcname = token.value
 
         last_token = token
+
+
+def extract_django(fileobj, keywords, comment_tags, options):
+    """
+    Extract messages from Django template files.
+
+    :param fileobj: the file-like object the messages should be extracted from
+    :param keywords: a list of keywords (i.e. function names) that should
+                     be recognized as translation functions
+    :param comment_tags: a list of translator tags to search for and
+                         include in the results
+    :param options: a dictionary of additional options (optional)
+    :return: an iterator over ``(lineno, funcname, message, comments)``
+             tuples
+    """
+
+    from django.template.base import Lexer, TokenType
+    from django.utils.encoding import smart_str
+    from django.utils.translation import trim_whitespace
+    from django.utils.translation.template import (
+        block_re,
+        constant_re,
+        context_re,
+        endblock_re,
+        inline_re,
+        plural_re,
+    )
+
+    def strip_quotes(s: str) -> str:
+        if (s[0] == s[-1]) and s.startswith(("'", '"')):
+            return s[1:-1]
+        return s
+
+    def join_tokens(tokens: list[str], trim=False) -> str:
+        message = "".join(tokens)
+        if trim:
+            message = trim_whitespace(message)
+        return message
+
+    message_context = None
+    intrans = False
+    inplural = False
+    trimmed = False
+    singular = []
+    plural = []
+    incomment = False
+    comment = []
+    flags = set()
+    lineno_comment_map = {}
+    comment_lineno_cache = None
+
+    # A buffer of pending translator comments
+    comments = []
+
+    for t in Lexer(fileobj.read().decode()).tokenize():
+        assert t.lineno
+        if incomment:
+            if t.token_type == TokenType.BLOCK and t.contents == "endcomment":
+                content = "".join(comment)
+                translators_comment_start = None
+                for _lineno, line in enumerate(content.splitlines(True)):
+                    if any(
+                        line.lstrip().startswith(comment_tag)
+                        for comment_tag in comment_tags
+                    ):
+                        translators_comment_start = _lineno
+                if translators_comment_start:
+                    comments += (
+                        line
+                        for _lineno, line in enumerate(content.splitlines(True))
+                        if _lineno >= translators_comment_start
+                    )
+                incomment = False
+                comment = []
+            else:
+                comment.append(t.contents)
+        elif intrans:
+            if t.token_type == TokenType.BLOCK:
+                endbmatch = endblock_re.match(t.contents)
+                pluralmatch = plural_re.match(t.contents)
+                if endbmatch:
+                    if inplural:
+                        if message_context:
+                            yield (
+                                t.lineno,
+                                "npgettext",
+                                (
+                                    smart_str(message_context),
+                                    smart_str(join_tokens(singular, trimmed)),
+                                    smart_str(join_tokens(plural, trimmed)),
+                                ),
+                                comments,
+                                flags,
+                            )
+                            comments = []
+                        else:
+                            yield (
+                                t.lineno,
+                                "ngettext",
+                                (
+                                    smart_str(join_tokens(singular, trimmed)),
+                                    smart_str(join_tokens(plural, trimmed)),
+                                ),
+                                comments,
+                                flags,
+                            )
+                            comments = []
+                    else:
+                        if message_context:
+                            yield (
+                                t.lineno,
+                                "pgettext",
+                                (
+                                    smart_str(message_context),
+                                    smart_str(join_tokens(singular, trimmed)),
+                                ),
+                                comments,
+                                flags,
+                            )
+                            comments = []
+                        else:
+                            yield (
+                                t.lineno,
+                                None,
+                                smart_str(join_tokens(singular, trimmed)),
+                                comments,
+                                flags,
+                            )
+                            comments = []
+                    message_context = None
+                    intrans = False
+                    inplural = False
+                    singular = []
+                    plural = []
+                    flags = set()
+                elif pluralmatch:
+                    inplural = True
+                else:
+                    raise SyntaxError(
+                        f"Translation blocks must not include other block tags: "
+                        f"{t.contents} (line {t.lineno})"
+                    )
+            elif t.token_type == TokenType.VAR:
+                if inplural:
+                    plural.append("%%(%s)s" % t.contents)
+                else:
+                    singular.append("%%(%s)s" % t.contents)
+            elif t.token_type == TokenType.TEXT:
+                contents = t.contents.replace("%", "%%")
+                if inplural:
+                    plural.append(contents)
+                else:
+                    singular.append(contents)
+        else:
+            # Handle comment tokens (`{# ... #}`) plus other constructs on
+            # the same line:
+            if comment_lineno_cache is not None:
+                cur_lineno = t.lineno + t.contents.count("\n")
+                if comment_lineno_cache == cur_lineno:
+                    if t.token_type != TokenType.COMMENT:
+                        for c in lineno_comment_map[comment_lineno_cache]:
+                            print(
+                                f"{fileobj.name}:{cur_lineno}: "
+                                f"The translator-targeted comment '{c}' "
+                                f"was ignored, because it wasn't "
+                                f"the last item on the line."
+                            )
+                        lineno_comment_map[comment_lineno_cache] = []
+                else:
+                    comments += lineno_comment_map[comment_lineno_cache]
+                comment_lineno_cache = None
+
+            if t.token_type == TokenType.BLOCK:
+                imatch = inline_re.match(t.contents)
+                bmatch = block_re.match(t.contents)
+                cmatches = constant_re.findall(t.contents)
+                if imatch:
+                    g = imatch[1]
+                    if g[0] == '"':
+                        g = g.strip('"')
+                    elif g[0] == "'":
+                        g = g.strip("'")
+                    g = g.replace("%", "%%")
+                    if imatch[2]:
+                        # A context is provided
+                        context_match = context_re.match(imatch[2])
+                        message_context = context_match[1]
+                        if message_context[0] == '"':
+                            message_context = message_context.strip('"')
+                        elif message_context[0] == "'":
+                            message_context = message_context.strip("'")
+                        yield (
+                            t.lineno,
+                            "pgettext",
+                            (smart_str(message_context), smart_str(g)),
+                            comments,
+                            flags,
+                        )
+                        comments = []
+                        message_context = None
+                    else:
+                        yield t.lineno, None, smart_str(g), comments, flags
+                        comments = []
+                elif bmatch:
+                    for fmatch in constant_re.findall(t.contents):
+                        stripped_fmatch = strip_quotes(fmatch)
+                        yield t.lineno, None, smart_str(stripped_fmatch), comments, flags
+                        comments = []
+                    if bmatch[1]:
+                        # A context is provided
+                        context_match = context_re.match(bmatch[1])
+                        message_context = context_match[1]
+                        if message_context[0] == '"':
+                            message_context = message_context.strip('"')
+                        elif message_context[0] == "'":
+                            message_context = message_context.strip("'")
+                    intrans = True
+                    inplural = False
+                    trimmed = "trimmed" in t.split_contents()
+                    singular = []
+                    plural = []
+                elif cmatches:
+                    for cmatch in cmatches:
+                        stripped_cmatch = strip_quotes(cmatch)
+                        yield t.lineno, None, smart_str(stripped_cmatch), comments, flags
+                        comments = []
+                elif t.contents == "comment":
+                    incomment = True
+                else:
+                    if comments:
+                        print(
+                            f"{fileobj.name}:{t.lineno}: "
+                            "This is not a translation tag, the "
+                            "translator-targeted comments above it will be ignored"
+                        )
+                    comments = []
+            elif t.token_type == TokenType.VAR:
+                parts = t.contents.split("|")
+                cmatch = constant_re.match(parts[0])
+                if cmatch:
+                    stripped_cmatch = strip_quotes(cmatch[1])
+                    yield t.lineno, None, smart_str(stripped_cmatch), comments, flags
+                    comments = []
+                for p in parts[1:]:
+                    if p.find(":_(") >= 0:
+                        p1 = p.split(":", 1)[1]
+                        if p1[0] == "_":
+                            p1 = p1[1:]
+                        if p1[0] == "(":
+                            p1 = p1.strip("()")
+                        p1 = strip_quotes(p1)
+                        yield t.lineno, None, smart_str(p1), comments, flags
+                        comments = []
+
+            elif t.token_type == TokenType.COMMENT:
+                if any(
+                    t.contents.lstrip().startswith(comment_tag)
+                    for comment_tag in comment_tags
+                ):
+                    lineno_comment_map.setdefault(t.lineno, []).append(t.contents)
+                    comment_lineno_cache = t.lineno
