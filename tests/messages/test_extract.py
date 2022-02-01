@@ -557,3 +557,21 @@ _(u'foo %s') % u'bar'
                                         extract.DEFAULT_KEYWORDS, [], {}))
         assert messages[0][1] == u'foo %s'
         assert messages[0][4] == {u'python-format'}
+
+    def test_python_brace_format_keyword(self):
+        buf = BytesIO(br"""
+_(u'foo {bar}').format(bar=u'test')
+""")
+        messages = list(extract.extract('python', buf,
+                                        extract.DEFAULT_KEYWORDS, [], {}))
+        assert messages[0][1] == u'foo {bar}'
+        assert messages[0][4] == {u'python-brace-format'}
+
+    def test_python_brace_format_positional(self):
+        buf = BytesIO(br"""
+_(u'foo {0}').format(u'bar')
+""")
+        messages = list(extract.extract('python', buf,
+                                        extract.DEFAULT_KEYWORDS, [], {}))
+        assert messages[0][1] == u'foo {0}'
+        assert messages[0][4] == {u'python-brace-format'}

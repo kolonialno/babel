@@ -18,7 +18,7 @@ from io import BytesIO
 import pytest
 
 from babel import util
-from babel.util import parse_future_flags, has_python_format
+from babel.util import parse_future_flags, has_python_format, has_python_brace_format
 
 
 class _FF:
@@ -127,3 +127,19 @@ def test_has_python_format(ids):
 ])
 def test_not_has_python_format(ids):
     assert not has_python_format(ids)
+
+@pytest.mark.parametrize('ids', [
+    ('foo {name} bar',),
+    ('foo {name:.3f} bar',),
+    ('foo {name!r:20} bar',),
+])
+def test_has_python_brace_format(ids):
+    assert has_python_brace_format(ids)
+
+@pytest.mark.parametrize('ids', [
+    ('foo',),
+    ('fo {}', ),
+    ('foo %d bar',),
+])
+def test_not_has_python_brace_format(ids):
+    assert not has_python_brace_format(ids)

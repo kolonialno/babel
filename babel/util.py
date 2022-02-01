@@ -16,6 +16,7 @@ import os
 import re
 import textwrap
 import pytz as _pytz
+import string
 from babel import localtime
 
 missing = object()
@@ -281,3 +282,16 @@ def has_python_format(ids):
     if isinstance(ids, str):
         ids = [ids]
     return any(PYTHON_FORMAT.search(id) for id in ids)
+
+
+FORMATTER = string.Formatter()
+
+
+def has_python_brace_format(ids):
+    if isinstance(ids, str):
+        ids = [ids]
+    return any(
+        field_name
+        for message_id in ids
+        for _, field_name, format_spec, conversion in FORMATTER.parse(message_id)
+    )

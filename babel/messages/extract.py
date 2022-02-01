@@ -22,7 +22,7 @@ from os.path import relpath
 import sys
 from tokenize import generate_tokens, COMMENT, NAME, OP, STRING
 
-from babel.util import parse_encoding, parse_future_flags, pathmatch, has_python_format
+from babel.util import parse_encoding, parse_future_flags, pathmatch, has_python_format, has_python_brace_format
 from textwrap import dedent
 
 
@@ -479,6 +479,9 @@ def extract_python(fileobj, keywords, comment_tags, options):
 
                 if has_python_format(message for message in messages if message):
                     flags.add("python-format")
+
+                if has_python_brace_format(message for message in messages if message):
+                    flags.add('python-brace-format')
 
                 if len(messages) > 1:
                     messages = tuple(messages)
